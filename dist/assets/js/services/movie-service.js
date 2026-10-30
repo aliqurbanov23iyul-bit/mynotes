@@ -1,0 +1,3 @@
+import {invoke} from './runtime-service.js';
+const statuses=['favorite','watchlist','watched','disliked'];
+export const movieService={encode(favorites=[],watchlist=[],watched=[],disliked=[]){return [favorites,watchlist,watched,disliked].flatMap((list,i)=>list.map(id=>/^\d+$/.test(String(id))?{tmdb_movie_id:Number(id),status:statuses[i]}:{catalog_key:id,status:statuses[i]}));},decode(rows){const list=status=>rows.filter(r=>r.status===status).map(r=>String(r.tmdb_movie_id||r.catalog_key));return {favorites:list('favorite'),watchlist:list('watchlist'),watched:list('watched'),disliked:list('disliked')};},async get(action,args={}){return (await invoke('movie-proxy',{action,...args})).result;}};

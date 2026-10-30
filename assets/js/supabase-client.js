@@ -1,0 +1,6 @@
+import {config} from './config.js';
+export const configured=!!(config.supabaseUrl&&config.publishableKey);
+let client;
+export async function getClient(){if(!configured)throw new Error('Supabase hələ qoşulmayıb. Quraşdırma təlimatını izləyin.');if(!config.publishableKey.startsWith('sb_publishable_'))throw Error('Yalnız publishable key qəbul edilir.');if(!client){const {createClient}=await import('./vendor/supabase.js');client=createClient(config.supabaseUrl,config.publishableKey,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true,flowType:'pkce',storageKey:'astra-auth'}});}return client;}
+export function errorMessage(error){if(error?.code==='40001'||String(error?.message).includes('WORKSPACE_CONFLICT'))return 'Məlumat başqa cihazda dəyişib. Yeniləyib yenidən cəhd edin.';if(error?.status===401||error?.code==='PGRST301')return 'Sessiya bitib. Yenidən daxil olun.';if(error?.code==='42501')return 'Bu əməliyyat üçün icazə yoxdur və ya hesab dayandırılıb.';if(!navigator.onLine||/fetch|network/i.test(error?.message||''))return 'Şəbəkə bağlantısını yoxlayıb yenidən cəhd edin.';return 'Əməliyyat tamamlanmadı. Məlumatları yoxlayıb yenidən cəhd edin.';}
+export async function unwrap(request){const {data,error}=await request;if(error)throw error;return data;}

@@ -1,0 +1,3 @@
+// Generic client errors never expose request bodies, credentials or stack traces.
+function notify(){let out=document.querySelector('#toasts');if(!out){out=document.createElement('div');out.id='toasts';out.setAttribute('role','status');document.body?.append(out);}if(out.querySelector('[data-client-error]'))return;const item=document.createElement('div');item.className='toast';item.dataset.clientError='true';item.textContent='Əməliyyat tamamlanmadı. Yenidən yoxlayın və ya səhifəni yeniləyin.';out.append(item);setTimeout(()=>item.remove(),6000);}
+window.addEventListener('unhandledrejection',event=>{event.preventDefault();notify();});window.addEventListener('error',()=>notify());
