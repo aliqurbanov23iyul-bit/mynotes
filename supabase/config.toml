@@ -1,0 +1,22 @@
+project_id = "astra-local"
+[functions.account-delete]
+verify_jwt = false
+# JWT is validated explicitly with auth.getUser(jwt) in the function, including new signing keys.
+
+[functions.ai-chat]
+verify_jwt = false
+
+[functions.jarvis]
+verify_jwt = false
+
+[functions.scheduler]
+verify_jwt = false
+
+[functions.movie-proxy]
+verify_jwt = false
+
+[functions.push-subscription]
+verify_jwt = false
+
+[functions.integration-status]
+verify_jwt = false

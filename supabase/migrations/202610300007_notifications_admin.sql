@@ -1,0 +1,39 @@
+begin;
+grant all on public.profiles,public.notes,public.tasks,public.calendar_events,public.favorite_movies,public.ai_preferences,public.jarvis_jobs,public.app_settings to service_role;
+create function public.enqueue_notifications() returns integer language plpgsql security definer set search_path='' as $$declare n integer=0;uid uuid;p record;local_now timestamp;cnt integer;events integer;done integer;begin
+ for p in select a.*,coalesce(b.timezone,'Asia/Baku') tz,coalesce(b.daily_briefing,false) brief,coalesce(b.weekly_summary,false) weekly from public.ai_preferences a left join public.ai_policy b on b.user_id=a.user_id where a.notifications_enabled and coalesce(b.notification_consent,false) and private.user_allowed(a.user_id) loop
+ uid=p.user_id;local_now=now() at time zone p.tz;
+ insert into public.user_notifications(user_id,kind,title,body,dedupe_key) select uid,'task','Tapşırıq vaxtı yaxınlaşır',t.title,'task:'||t.id||':'||t.due_at from public.tasks t where t.user_id=uid and t.status='pending' and t.due_at between now() and now()+interval '15 minutes' on conflict(user_id,dedupe_key) do nothing;
+ insert into public.user_notifications(user_id,kind,title,body,dedupe_key) select uid,'calendar','Təqvim hadisəsi yaxınlaşır',e.title,'event:'||e.id||':'||e.starts_at from public.calendar_events e where e.user_id=uid and e.starts_at between now() and now()+interval '30 minutes' on conflict(user_id,dedupe_key) do nothing;
+ if p.brief and extract(hour from local_now)>=8 then
+ select count(*) into cnt from public.tasks where user_id=uid and (due_at at time zone p.tz)::date=local_now::date and status='pending';select count(*) into events from public.calendar_events where user_id=uid and (starts_at at time zone p.tz)::date=local_now::date;
+ insert into public.user_notifications(user_id,kind,title,body,dedupe_key) values(uid,'daily','Sabahın xeyir!',format('Bu gün %s gözləyən tapşırığın və %s təqvim hadisən var.',cnt,events),'daily:'||local_now::date) on conflict(user_id,dedupe_key) do nothing;
+ end if;
+ if p.weekly and extract(isodow from local_now)=7 and extract(hour from local_now)>=18 then
+ select count(*) into done from public.tasks where user_id=uid and status='completed' and completed_at>=now()-interval '7 days';select count(*) into cnt from public.tasks where user_id=uid and status='pending' and due_at between now() and now()+interval '7 days';select count(*) into events from public.prepared_materials where user_id=uid and created_at>=now()-interval '7 days';
+ insert into public.user_notifications(user_id,kind,title,body,dedupe_key) values(uid,'weekly','Həftənin icmalı',format('Son 7 gündə %s tapşırıq tamamlanıb, %s material hazırlanıb. Növbəti 7 gündə %s tapşırıq var.',done,events,cnt),'weekly:'||local_now::date) on conflict(user_id,dedupe_key) do nothing;
+ end if;n=n+1;
+ end loop;return n;
+end$$;
+create function public.runtime_admin(operation text,args jsonb default '{}') returns jsonb language plpgsql security definer set search_path='' as $$declare result jsonb;begin
+ if not public.is_admin() then raise exception 'Admin required' using errcode='42501';end if;
+ if operation='overview' then return jsonb_build_object('system',(select to_jsonb(c) from private.runtime_config c),'providers',(select jsonb_agg(p) from private.provider_config p),'usage',(select jsonb_build_object('requests',count(*),'input_tokens',coalesce(sum(input_tokens),0),'output_tokens',coalesce(sum(output_tokens),0),'estimated_usd',coalesce(sum(coalesce(cost_usd,reserved_usd)),0),'uncertain',count(*) filter(where status in ('uncertain','reserved'))) from private.usage_totals where created_at>=date_trunc('month',now())),'by_provider',(select coalesce(jsonb_agg(x),'[]') from(select provider,count(*) requests,sum(coalesce(cost_usd,reserved_usd)) estimated_usd from private.usage_totals where created_at>=date_trunc('month',now()) group by provider)x),'notifications',(select jsonb_build_object('sent',count(*) filter(where push_status='sent'),'pending',count(*) filter(where push_status='pending'),'failed',count(*) filter(where push_status='failed'),'sending',count(*) filter(where push_status='sending')) from public.user_notifications),'errors',(select coalesce(jsonb_agg(x),'[]') from(select component,code,created_at from private.system_events order by created_at desc limit 30)x),'job_errors',(select coalesce(jsonb_agg(x),'[]') from(select id,status,last_error,attempts from public.jarvis_jobs where last_error is not null order by updated_at desc limit 50)x));
+ elsif operation='provider' then
+ if args->>'provider' not in ('Gemini','Claude','Grok') or char_length(args->>'model')>160 or coalesce(args->>'model','') !~ '^[a-zA-Z0-9._:-]*$' or (args->>'context_tokens')::integer not between 1 and 2000000 or (args->>'max_output_tokens')::integer not between 1 and 32000 or (args->>'input_per_million')::numeric<0 or (args->>'output_per_million')::numeric<0 then raise exception 'Invalid provider config';end if;
+ if (args->>'enabled')::boolean and (coalesce(args->>'model','')='' or args->>'input_per_million' is null or args->>'output_per_million' is null) then raise exception 'Model and verified prices required';end if;
+ update private.provider_config set enabled=(args->>'enabled')::boolean,model=args->>'model',endpoint=coalesce(args->>'endpoint',''),input_per_million=(args->>'input_per_million')::numeric,output_per_million=(args->>'output_per_million')::numeric,context_tokens=(args->>'context_tokens')::integer,max_output_tokens=(args->>'max_output_tokens')::integer,capabilities=array(select jsonb_array_elements_text(coalesce(args->'capabilities','[]'))),updated_at=now() where provider=args->>'provider';
+ elsif operation='system' then
+ if args->>'default_provider' not in ('auto','Gemini','Claude','Grok') then raise exception 'Invalid default provider';end if;
+ update private.runtime_config set ai_enabled=(args->>'ai_enabled')::boolean,automation_enabled=(args->>'automation_enabled')::boolean,default_provider=args->>'default_provider',global_daily_usd=(args->>'global_daily_usd')::numeric,global_monthly_usd=(args->>'global_monthly_usd')::numeric,max_attempts=(args->>'max_attempts')::integer;
+ elsif operation='cancel_job' then update public.jarvis_jobs set status='cancelled',lease_token=null where id=(args->>'id')::uuid and status in ('draft','scheduled','retry','processing');if not found then raise exception 'Job unavailable';end if;
+ elsif operation='movie' then update private.runtime_config set featured_tmdb_id=(args->>'featured_tmdb_id')::bigint,movie_automatic=(args->>'movie_automatic')::boolean;
+ else raise exception 'Unknown operation';end if;
+ insert into private.admin_audit(actor_id,action) values(auth.uid(),'runtime:'||operation);return '{"ok":true}';
+end$$;
+-- Preserve opted-in analysis state through the existing atomic snapshot adapter.
+create function public.set_note_analysis(note_id uuid,allowed boolean) returns void language plpgsql security definer set search_path='' as $$begin if not public.account_allowed() then raise exception 'Access denied' using errcode='42501';end if;update public.notes set ai_analysis_allowed=allowed where id=note_id and user_id=auth.uid();if not found then raise exception 'Note unavailable';end if;if not allowed then update public.jarvis_jobs set status='cancelled',lease_token=null where source_note_id=note_id and user_id=auth.uid() and status in ('scheduled','retry','processing');end if;end$$;
+revoke all on function public.enqueue_notifications() from public,anon,authenticated;
+grant execute on function public.enqueue_notifications() to service_role;
+revoke all on function public.runtime_admin(text,jsonb),public.set_note_analysis(uuid,boolean) from public,anon;
+grant execute on function public.runtime_admin(text,jsonb),public.set_note_analysis(uuid,boolean) to authenticated;
+commit;

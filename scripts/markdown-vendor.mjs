@@ -1,0 +1,2 @@
+import {build} from 'esbuild';
+await build({stdin:{contents:"import {marked} from 'marked';import DOMPurify from 'dompurify';export function markdown(text){return DOMPurify.sanitize(marked.parse(text,{async:false}),{USE_PROFILES:{html:true},FORBID_TAGS:['img','style','iframe','input','button','form','video','audio'],FORBID_ATTR:['style','target'],ALLOWED_URI_REGEXP:/^(?:https:|mailto:|#)/i});}",resolveDir:process.cwd()},bundle:true,format:'esm',platform:'browser',target:'es2022',minify:true,outfile:'assets/js/vendor/markdown.js'});
