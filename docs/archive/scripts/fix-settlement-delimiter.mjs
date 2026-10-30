@@ -1,0 +1,1 @@
+import {readFileSync,writeFileSync} from 'node:fs';const file='supabase/migrations/202610300006_runtime_rpc.sql';let s=readFileSync(file,'utf8').replace('as $declare entry',()=> 'as $$declare entry').replace('end$;\ncreate function public.runtime_service',()=> 'end$$;\ncreate function public.runtime_service');writeFileSync(file,s);

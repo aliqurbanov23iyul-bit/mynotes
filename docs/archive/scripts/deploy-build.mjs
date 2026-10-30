@@ -1,0 +1,1 @@
+import {readFileSync,writeFileSync} from 'node:fs';let s=readFileSync('scripts/build.mjs','utf8').replace("await import('./vendor.mjs');","if(process.env.SUPABASE_URL||process.env.SUPABASE_PUBLISHABLE_KEY)await import('./configure.mjs');\nawait import('./vendor.mjs');");writeFileSync('scripts/build.mjs',s);

@@ -1,0 +1,4 @@
+import {readFileSync,writeFileSync} from 'node:fs';
+const pages=['index.html','notes.html','discover.html','ai.html','admin/index.html','admin/users.html','admin/ai-management.html','admin/jarvis.html','admin/movies.html','admin/settings.html'];
+for(const file of pages){let s=readFileSync(file,'utf8');s=s.replace('<div id="app"></div>','<div id="app"><div class="main" aria-label="Yüklənir"><div class="skeleton" style="width:160px;margin:40px 0"></div><div class="skeleton" style="height:200px"></div></div></div><noscript>ASTRA-dan istifadə etmək üçün JavaScript-i aktiv edin.</noscript>');writeFileSync(file,s);}
+let s=readFileSync('assets/js/app.js','utf8');s=s.replace('<section class="card movie-hero"><button','<section class="card movie-hero" style="${featured.id!==\'interstellar\'?\'background:linear-gradient(0deg,#10182b,\'+featured.color+\')\':\'\'}"><button');writeFileSync('assets/js/app.js',s);

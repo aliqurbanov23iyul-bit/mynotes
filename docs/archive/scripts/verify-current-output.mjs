@@ -1,0 +1,3 @@
+import {readFile,readdir} from 'node:fs/promises';import assert from 'node:assert/strict';import {execFileSync} from 'node:child_process';
+async function paths(dir){const list=[];for(const e of await readdir(dir,{withFileTypes:true})){const p=dir+'/'+e.name;if(e.isDirectory())list.push(...await paths(p));else if(/\.(js|css)$/.test(p))list.push(p);}return list;}
+const mismatch=[];for(const p of await paths('assets'))if(!(await readFile(p)).equals(await readFile('dist/'+p)))mismatch.push(p);if(mismatch.length){execFileSync(process.execPath,['scripts/build.mjs'],{stdio:'inherit'});}console.log('PASS: dist matches current frontend source.');

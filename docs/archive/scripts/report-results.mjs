@@ -1,0 +1,1 @@
+import {readFileSync,writeFileSync} from 'node:fs';const file='docs/TEST-RESULTS.md';writeFileSync(file,'> Bu, Phase 2 tarixi hesabatıdır. Cari Phase 3+ nəticələri üçün [FINAL-AUDIT.md](FINAL-AUDIT.md) oxuyun.\n\n'+readFileSync(file,'utf8').replace(/^\uFEFF/,''));
